@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  ptsb-checkbot:
+    container_name: ptsb-checkbot
+    build:
+      context: ..
+      dockerfile: builder/Dockerfile
+    env_file:
+      - ../config/default.env
+    volumes:
+      - ..:/ptsb-checkbot
+      - ptsb-checkbot-db:/opt/ptsb-checkbot/database  # том для БД
+    restart: always
+
+volumes:
+  ptsb-checkbot-db:
