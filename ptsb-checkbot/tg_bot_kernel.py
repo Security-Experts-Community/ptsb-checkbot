@@ -657,7 +657,7 @@ async def go_to_manage_app_menu(message: Message, state: FSMContext) -> None:
 # хэндлер обработки дейсвтий админа по управлению приложением в зависимости от выбранного им дейсвтия
 @dp.message(
     AdminStates.manage_app_menu,
-    F.text in [custom_keyboars.BTN_MANAGE_APP_GET_DB_BACKUP, custom_keyboars.BTN_MANAGE_APP_RETURN]
+    F.text.in_([custom_keyboars.BTN_MANAGE_APP_GET_DB_BACKUP, custom_keyboars.BTN_MANAGE_APP_RETURN])
 )
 async def process_manage_app_action(message: Message, state: FSMContext) -> None:
 
