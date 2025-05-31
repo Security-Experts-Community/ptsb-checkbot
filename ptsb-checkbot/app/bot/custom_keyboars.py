@@ -81,7 +81,8 @@ admin_manage_app_keyboard = ReplyKeyboardMarkup(
     keyboard= [
         [KeyboardButton(text=BTN_MANAGE_APP_GET_DB_BACKUP)],
         [KeyboardButton(text=BTN_MANAGE_APP_RETURN)]
-    ]
+    ],
+    resize_keyboard=True
 )
 
 # клавиатура мейн меню песочницы для админа
