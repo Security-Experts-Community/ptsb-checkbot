@@ -12,6 +12,7 @@ class AdminStates(StatesGroup):
     input_user_id = State()             # ADMIN состояние, когда админ вводит tg id юзера и для него что-то делается (info, ban, unban, del)
     create_user = State()               # ADMIN состояние, когда админ нажимает "создать юзера"
     list_app_users = State()            # ADMIN состояние, когда админ нажимает "отобразить пользователей бота"
+    manage_app_menu = State()           # ADMIN состояние, когда админ переходит в меню управления приложением
 
 # возможные состояния при создании основного профиля пользователя
 class AppUserCreation(StatesGroup):

@@ -65,7 +65,6 @@ DOWNLODAD_DIR = os.path.join(PROJECT_ROOT, "downloads")
 if not os.path.exists(DOWNLODAD_DIR):
     os.mkdir(DOWNLODAD_DIR)
 
-
 # возможные действия админа при вводе user_id для какого-то одного действия
 class AdminSingleActionWithId:
     GET_USER_INFO = "get_one_user_info"     # информация о юзере по ID
@@ -221,7 +220,7 @@ async def command_start_handler(message: Message, state: FSMContext) -> None:
 
 
 ############################## административные простые хэндлеры ##############################
-
+# хэндлеры, связанные с пользователями
 # хэндлер для root_admin_menu -> manage_users_menu // переход в управление пользователями
 @dp.message(AdminStates.root_admin_menu, F.text == custom_keyboars.BTN_ADMIN_MENU_MANAGE_USERS)
 async def manage_users_admin_menu(message: Message, state: FSMContext) -> None:
@@ -230,6 +229,7 @@ async def manage_users_admin_menu(message: Message, state: FSMContext) -> None:
         reply_markup=custom_keyboars.manage_users_menu_keyboard
     )
     await state.set_state(AdminStates.manage_users_menu)
+    return
 
 
 # хэндлер для manage_users_menu -> root_admin_menu // вернуться в главное меню админа
@@ -240,6 +240,7 @@ async def return_to_main_admin_menu(message: Message, state: FSMContext) -> None
         reply_markup=custom_keyboars.admin_root_menu_keyboard
     )
     await state.set_state(AdminStates.root_admin_menu)
+    return
 
 
 # хэндлер для root_admin_menu -> sandbox_admin_menu // переход во взаимодейсвтие с песочницей
@@ -250,6 +251,7 @@ async def sandbox_admin_menu(message: Message, state: FSMContext) -> None:
         reply_markup=custom_keyboars.admin_main_sandbox_keyboard
     )
     await state.set_state(SandboxInteractionStates.sandbox_admin_menu)
+    return
 
 
 # хэндлер для sandbox_admin_menu -> root_admin_menu // переход в root menu у админа
@@ -260,6 +262,7 @@ async def return_to_main_admin_menu(message: Message, state: FSMContext) -> None
         reply_markup=custom_keyboars.admin_root_menu_keyboard
     )
     await state.set_state(AdminStates.root_admin_menu)
+    return
 
 
 # универсальный хэндлер для действий админа, когда он делает единичное действие с юзером по ID
@@ -294,6 +297,7 @@ async def handle_user_id_action_prompt(message: Message, state: FSMContext) -> N
     await state.update_data(admin_action=action)
     await message.answer(prompt)
     await state.set_state(AdminStates.input_user_id)
+    return
 
 
 # хэндлер для input_user_id -> manage_users_menu // обработка введенного TG ID для:
@@ -339,6 +343,7 @@ async def make_single_action_with_user_id(message: Message, state: FSMContext) -
         "Выберите дальнейшее действие:",
         reply_markup=custom_keyboars.manage_users_menu_keyboard
     )
+    return
 
 
 ############################## административные хэндлеры создание юзеров ##############################
@@ -452,6 +457,7 @@ async def process_user_comment_to_create(message: Message, state: FSMContext) ->
     await message.answer("Введена базовая информация по пользователю.\nПереход к заполнению профиля взаимодействия с песочницей.")
     await message.answer("Введите количество проверок в день, которые доступы пользователю (целое число):")
     await state.set_state(SandboxProfileCreation.CREATE_max_checks)
+    return
 
 
 
@@ -635,16 +641,47 @@ async def process_list_all_users(message: Message, state: FSMContext) -> None:
     return
 
 
-# хэндлер для получения бэкапа БД пользователей
-@dp.message(AdminStates.manage_users_menu, F.text == custom_keyboars.BTN_MANAGE_USERS_BACKUP)
-async def get_db_backup(message: Message, state: FSMContext) -> None:
+############################## административные хэндлеры ##############################
+# хэндлеры связанные с управлением приложением
+# хэндлер для перехода в меню управления приложением
+@dp.message(AdminStates.root_admin_menu, F.text == custom_keyboars.BTN_ADMIN_MENU_MANAGE_APP)
+async def go_to_manage_app_menu(message: Message, state: FSMContext) -> None:
     
-    # открываем и отправляем
-    db_file = FSInputFile(users_functions.FULL_PATH_TO_KERNEL_DB, filename=users_functions.DB_NAME)
-    await message.answer_document(db_file, caption="Файл с БД пользователей:")
-    
-    await state.set_state(AdminStates.manage_users_menu)
+    await message.answer(
+        "📋 Меню управления приложением.\n\nВыберите действие:",
+        reply_markup=custom_keyboars.admin_manage_app_keyboard
+    )
+    await state.set_state(AdminStates.manage_app_menu)
     return
+
+# хэндлер обработки дейсвтий админа по управлению приложением в зависимости от выбранного им дейсвтия
+@dp.message(
+    AdminStates.manage_app_menu,
+    F.text in [custom_keyboars.BTN_MANAGE_APP_GET_DB_BACKUP, custom_keyboars.BTN_MANAGE_APP_RETURN]
+)
+async def process_manage_app_action(message: Message, state: FSMContext) -> None:
+
+    # если нужен бекап БД
+    if message.text == custom_keyboars.BTN_MANAGE_APP_GET_DB_BACKUP:
+        # открываем и отправляем
+        db_file = FSInputFile(users_functions.FULL_PATH_TO_KERNEL_DB, filename=users_functions.DB_NAME)
+        await message.answer_document(db_file, caption="Файл с БД пользователей:")
+        await message.answer(
+            "Выберите дальнейшее дейсвтие:",
+            reply_markup=custom_keyboars.admin_manage_app_keyboard
+        )
+        await state.set_state(AdminStates.manage_app_menu)
+        return
+
+    # если выйти из меню
+    if message.text == custom_keyboars.BTN_MANAGE_APP_RETURN:
+        await message.answer(
+            "Выберите дальнейшее дейсвтие:",
+            reply_markup=custom_keyboars.admin_root_menu_keyboard
+        )
+        await state.set_state(AdminStates.root_admin_menu)
+        return
+
     
 
 ############################## пользовательские хэндлеры ##############################
@@ -982,7 +1019,7 @@ async def send_data_to_scan(message: Message, state: FSMContext) -> None:
     # если сканит ссылку
     if scan_type == "url":
         url_to_scan = user_data.get(SandboxInteractionsParameters.url_to_scan)
-        # грузим эту хуйню наконец то в песочницу
+        # грузим это наконец то в песочницу
         scan_req: SendScanRequest = await ptsb_client.send_link_to_scan(
             checking_link=url_to_scan,
             check_priority=scan_priority,
@@ -992,7 +1029,7 @@ async def send_data_to_scan(message: Message, state: FSMContext) -> None:
     # если сканит файл
     elif scan_type == "file":
         file_to_scan = user_data.get(SandboxInteractionsParameters.file_to_scan)
-        # опять грузим эту хуйню в песочницу
+        # опять грузим это в песочницу
         scan_req: SendScanRequest = await ptsb_client.send_file_to_scan(
             path_to_file_to_upload=file_to_scan,
             check_priority=scan_priority,
@@ -1004,7 +1041,7 @@ async def send_data_to_scan(message: Message, state: FSMContext) -> None:
             os.remove(file_to_scan)
         
 
-    # если хуйня загрузилась не совсем успешно
+    # если загрузилось не совсем удачно
     if not scan_req.is_ok:
         reply_keyboard = custom_keyboars.admin_main_sandbox_keyboard if user_role == UsersRolesInBot.main_admin else custom_keyboars.user_main_sandbox_keyboard
         new_state = SandboxInteractionStates.sandbox_admin_menu if user_role == UsersRolesInBot.main_admin else SandboxInteractionStates.sandbox_user_menu

@@ -78,7 +78,17 @@ if docker images | grep -q "ptsb-checkbot"; then
             $compose_cmd -f "$builder_dir/docker-compose.yaml" up -d
             ;;
         rebuild)
-            $compose_cmd -f "$builder_dir/docker-compose.yaml" down
+            # replacing db file with a shapshot
+            if [ "$1" == "--backup_db=true" ]; then
+                if [ ! -f ./ptsb-checkbot/database/kernel_base.db ]; then
+                    echo "Backup file was not found! Container will run with the old db parameters."
+                    $compose_cmd -f "$builder_dir/docker-compose.yaml" down
+                else
+                    $compose_cmd -f "$builder_dir/docker-compose.yaml" down -v
+                fi
+            else
+                $compose_cmd -f "$builder_dir/docker-compose.yaml" down
+            fi
             $compose_cmd -f "$builder_dir/docker-compose.yaml" up --build -d
             ;;
         *)
