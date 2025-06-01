@@ -12,6 +12,11 @@ services:
       - ..:/ptsb-checkbot
       - ptsb-checkbot-db:/opt/ptsb-checkbot/database  # том для БД
     restart: always
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   ptsb-checkbot-db:
