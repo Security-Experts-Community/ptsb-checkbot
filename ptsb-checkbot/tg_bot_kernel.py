@@ -2,6 +2,8 @@
 import aiofiles
 import asyncio
 import os
+import logging
+import sys
 
 # классы из устанавливаемых либ
 from aiogram import Bot, Dispatcher, F                      # ядро бота
@@ -46,6 +48,26 @@ TG_BOT_TOKEN = str(os.getenv('TG_BOT_TOKEN'))
 # TG id первого администратора ТГ бота
 FIRST_BOT_ADMIN_ID = int(os.getenv('FIRST_BOT_ADMIN_ID'))
 
+### логирование
+# создание логгера
+logger = logging.getLogger("ptsb_checkbot")
+logger.setLevel(logging.INFO)
+log_formatter = logging.Formatter("[%(asctime)s] [%(levelname)s] %(name)s [%(funcName)s]: %(message)s")
+
+# хэндлер для обычного вывода stdout
+stdout_handler = logging.StreamHandler(sys.stdout)
+stdout_handler.setLevel(logging.INFO)
+stdout_handler.setFormatter(log_formatter)
+
+# хэндлер для WARNING и выше
+stderr_handler = logging.StreamHandler(sys.stderr)
+stderr_handler.setLevel(logging.WARNING)
+stderr_handler.setFormatter(log_formatter)
+
+# регистрация хэндлеров
+logger.addHandler(stdout_handler)
+logger.addHandler(stderr_handler)
+
 
 # диспетчер всех хэндлеров для ТГ бота
 dp = Dispatcher(storage=MemoryStorage())
@@ -84,6 +106,7 @@ async def handle_get_user_info(message: Message, user_entity: AppUserFromDb) -> 
     """
 
     # в дополнение получаем профиль пользователя взаимодействия с песком
+    logger.info(f"Trying to get info about user: {user_entity.tg_user_id}")
     user_sandbox_profile: UserProfileFromDb = await sandbox_profiles_functions.get_profile_entity(user_entity.tg_user_id)
 
     await message.answer(
@@ -102,6 +125,7 @@ async def handle_get_user_info(message: Message, user_entity: AppUserFromDb) -> 
         f"Приоритет проверки пользователя: {user_sandbox_profile.check_priority}\n"
         f"Получает ссылки на задания: {'да' if user_sandbox_profile.can_get_links else  'нет'}"
     )
+    logger.info(f"Info about user: {user_entity.tg_user_id} was printed")
 
 # функция забанить пользователя по id
 async def handle_ban_user(message: Message, user_entity: AppUserFromDb) -> None:
@@ -112,14 +136,21 @@ async def handle_ban_user(message: Message, user_entity: AppUserFromDb) -> None:
         - `message` (Message): Сообщение от админа
         - `user_entity` (object of custom class): Пользователь с информацией о нем
     """
+    
+    logger.info(f"Trying to ban user {user_entity.tg_user_id} by user {message.from_user.id}")
+
     if user_entity.tg_user_id == message.from_user.id:
         await message.answer(
             "⚠️ <b>Не удалось выполнить действие!</b>\n\n"
             "Нельзя стрелять себе в колени и блокировать самого себя."
         )
+        logger.info(f"User {message.from_user.id} was not banned by himself")
+    
     else:
         await users_functions.change_user_state_by_id(user_entity.tg_user_id, 1)
         await message.answer(f"✅ Пользователь <code>{user_entity.tg_user_id}</code> заблокирован.")
+
+        logger.info(f"User {user_entity.tg_user_id} was banned")
 
 # функция разбранить пользователя по id
 async def handle_unban_user(message: Message, user_entity: AppUserFromDb) -> None:
@@ -130,8 +161,13 @@ async def handle_unban_user(message: Message, user_entity: AppUserFromDb) -> Non
         - `message` (Message): Сообщение от админа
         - `user_entity` (object of custom class): Пользователь с информацией о нем
     """
+
+    logger.info(f"Trying to unban user {user_entity.tg_user_id} by user {message.from_user.id}")
+    
     await users_functions.change_user_state_by_id(user_entity.tg_user_id, 0)
     await message.answer(f"✅ Пользователь <code>{user_entity.tg_user_id}</code> разблокирован.")
+    
+    logger.info(f"User {user_entity.tg_user_id} was unbanned")
 
 # функция удаления юзера из БД
 async def handle_delete_user(message: Message, user_entity: AppUserFromDb) -> None:
@@ -142,18 +178,23 @@ async def handle_delete_user(message: Message, user_entity: AppUserFromDb) -> No
         - `message` (Message): Сообщение от админа
         - `user_entity` (object of custom class): Пользователь с информацией о нем
     """
+
+    logger.info(f"Trying to delete user {user_entity.tg_user_id} by user {message.from_user.id}")
+
     if user_entity.tg_user_id == message.from_user.id:
         await message.answer(
             "⚠️ <b>Не удалось выполнить действие!</b>\n\n"
             "Нельзя стрелять себе в колени и удалять самого себя."
         )
-    else:
-        # удаляем базовый профиль пользователя
-        await users_functions.delete_user_by_id(user_entity.tg_user_id)
-        # удаляем профиль взаимодействия с песком
-        await sandbox_profiles_functions.delete_profile_by_id(user_entity.tg_user_id)
+        logger.info(f"User {message.from_user.id} was not deleted by himself")
 
+    else:
+        # удаляем базовый профиль пользователя и профиль взаимодействия с песком
+        await users_functions.delete_user_by_id(user_entity.tg_user_id)
+        await sandbox_profiles_functions.delete_profile_by_id(user_entity.tg_user_id)
         await message.answer(f"✅ Пользователь <code>{user_entity.tg_user_id}</code> удалён.")
+
+        logger.info(f"User {user_entity.tg_user_id} was deleted")
 
 # регистрация маппинга действий на функции (хэндлеры)
 ADMIN_SINGLE_ACTIONS_HANDLER = {
@@ -177,8 +218,12 @@ async def command_start_handler(message: Message, state: FSMContext) -> None:
     current_user_id = message.from_user.id
     current_user_data: AppUserFromDb = await users_functions.get_user_entity(current_user_id)
     
+    logger.info(f"User {current_user_id} started interaction with bot")
+    
     # Проверяем, что пользователь существует в БД
     if current_user_data is None:
+        logger.info(f"User {current_user_id} was not found in app database")
+        
         await message.answer(
             f"⚠️ <b>Вы не зарегистрированы</b>!\n\n"
             f"Для получения доступа перешлите Администратору бота это сообщение.\n\n"
@@ -190,6 +235,8 @@ async def command_start_handler(message: Message, state: FSMContext) -> None:
     
     # проверяем что юзер в блек листе
     if current_user_data.is_blocked:
+        logger.info(f"User {current_user_id} is banned in app and has no access")
+        
         await message.answer(
             f"❌ <b>Доступ для Вас запрещён!</b>\n\n"
             f"Если Вы считаете, что это ошибка, то сообщите об этом Администратору бота.\n\n"
@@ -201,6 +248,8 @@ async def command_start_handler(message: Message, state: FSMContext) -> None:
 
     # Во всех прочих случаях определяем меню в зависимости от роли
     if current_user_data.user_role == UsersRolesInBot.main_admin:
+        logger.info(f"User {current_user_id} was authorized and got role of {current_user_data.user_role}")
+        
         await message.answer(
             f"👑 Добро пожаловать, Администратор!\n\n"
             f"Выберите действие из доступных в списке ниже:",
@@ -210,6 +259,8 @@ async def command_start_handler(message: Message, state: FSMContext) -> None:
         return
     
     elif current_user_data.user_role == UsersRolesInBot.user:
+        logger.info(f"User {current_user_id} was authorized and got role of {current_user_data.user_role}")
+        
         await message.answer(
             f"👋 Добро пожаловать!\n\n"
             f"Выберите действие из доступных в списке ниже:",
@@ -312,6 +363,8 @@ async def make_single_action_with_user_id(message: Message, state: FSMContext) -
     admin_data = await state.get_data()
     admin_action_type = admin_data.get("admin_action") 
     
+    logger.info(f"Admin user {message.from_user.id} trying to perform action: {admin_action_type}")
+    
     try:
         
         # обрабатываем ввод и запрашиваем его из БД
@@ -320,6 +373,8 @@ async def make_single_action_with_user_id(message: Message, state: FSMContext) -
 
         # если юзера в БД не существует
         if user_entity is None:
+            logger.info(f"User {user_id_to_get} was not found in app db to perform action by admin user {message.from_user.id}")
+
             await message.answer(
                 "⚠️ <b>Не удалось выполнить действие!</b>\n\n"
                 "Пользователь не найден в базе."
@@ -332,9 +387,12 @@ async def make_single_action_with_user_id(message: Message, state: FSMContext) -
 
     # ошибка ввода TG id от админа
     except ValueError:
+        logger.info("Action by admin user was nor perfromed, becouse of incorrect int() input")
+
         await message.answer(
             "⚠️ <b>Не удалось выполнить действие!</b>\n\n"
-            "Не получилось преобразовать ввод в число.")
+            "Не получилось преобразовать ввод в число."
+        )
     
     # в любом случае возвращаем админа в меню управления пользователями
     await state.update_data(admin_action="")
@@ -351,6 +409,8 @@ async def make_single_action_with_user_id(message: Message, state: FSMContext) -
 @dp.message(AdminStates.manage_users_menu, F.text == custom_keyboars.BTN_MANAGE_USERS_ADD)
 async def handle_promt_to_create_user(message: Message, state: FSMContext) -> None:
     
+    logger.info(f"Admin user {message.from_user.id} started process of new user creation")
+
     # обнуляем все переменные в контексте админа перед созданием нового пользователя. для безопасности
     for parameter in vars(InputUserParameters).values():
         if isinstance(parameter, str):
@@ -373,6 +433,8 @@ async def process_user_id_to_create(message: Message, state: FSMContext) -> None
     try:
         user_id_to_create = int(message.text)
     except ValueError:
+        logger.info(f"Creation of user by admin user {message.from_user.id} was interrupted becouse of incorrect int(tg_user_id) input")
+
         await message.answer(
             "⚠️ <b>Не удалось выполнить действие!</b>\n\n"
             "Не получилось преобразовать ввод в число."
@@ -387,6 +449,8 @@ async def process_user_id_to_create(message: Message, state: FSMContext) -> None
     # проверяем, что пользователь еще не существует в боте.
     user_entity: AppUserFromDb = await users_functions.get_user_entity(user_id_to_create)
     if user_entity is not None:
+        logger.info(f"Creation of user {user_entity.tg_user_id} by admin user {message.from_user.id} was interrupted becouse user already exists")
+
         await message.answer(
             "⚠️ <b>Не удалось выполнить действие!</b>\n\n"
             f"Пользователь с id <code>{user_id_to_create}</code> уже существует."
@@ -409,13 +473,15 @@ async def process_user_id_to_create(message: Message, state: FSMContext) -> None
 
 
 # хэндлер для ввода роли для создания пользователя 
-@dp.message(AppUserCreation.CREATE_user_role)
+@dp.message(AppUserCreation.CREATE_user_role, F.text)
 async def process_user_role_to_create(message: Message, state: FSMContext) -> None:
 
     user_role_to_create = message.text
 
     # проверяем, что ввод соответствует названиям ролей в приложении
     if user_role_to_create != UsersRolesInBot.user:
+        logger.info(f"Creation of user by admin user {message.from_user.id} was interrupted becouse of incorrect user_role input")
+
         await message.answer(
             "⚠️ <b>Не удалось выполнить действие!</b>"
             f"Введено значение, отличное от <code>{UsersRolesInBot.user}</code>."
@@ -435,12 +501,14 @@ async def process_user_role_to_create(message: Message, state: FSMContext) -> No
 
 
 # хэндлер для ввода комментария для создания пользователя 
-@dp.message(AppUserCreation.CREATE_comment)
+@dp.message(AppUserCreation.CREATE_comment, F.text)
 async def process_user_comment_to_create(message: Message, state: FSMContext) -> None:
 
     # получаем комментарий по юзеру и проверяем, что он соответстует длине не более 255
     user_comment = message.text
     if len(user_comment) > 255:
+        logger.info(f"Creation of user by admin user {message.from_user.id} was interrupted becouse of large user_comment input")
+
         await message.answer(
             "⚠️ <b>Не удалось выполнить действие!</b>\n\n"
             "Длина комментария получилась больше 255 символов."
@@ -462,7 +530,7 @@ async def process_user_comment_to_create(message: Message, state: FSMContext) ->
 
 
 # хэндлер для ввода max количества проверок для создания пользователя 
-@dp.message(SandboxProfileCreation.CREATE_max_checks)
+@dp.message(SandboxProfileCreation.CREATE_max_checks, F.text)
 async def process_user_max_cheks_to_create(message: Message, state: FSMContext) -> None:
 
     # пытаемся преобразовать полученное значение в целое число и проверяем, что число строго > 0
@@ -471,6 +539,8 @@ async def process_user_max_cheks_to_create(message: Message, state: FSMContext) 
         if max_user_checks <= 0:
             raise ValueError()
     except ValueError:
+        logger.info(f"Creation of user by admin user {message.from_user.id} was interrupted becouse of incorrect 0 < int(max_user_cheks) input")
+        
         await message.answer(
             "⚠️ <b>Не удалось выполнить действие!</b>\n\n"
             "Не получилось преобразовать ввод в целое число большее 0."
@@ -503,6 +573,8 @@ async def process_user_priority_to_create(message: Message, state: FSMContext) -
         if user_check_priority not in range(1,5):
             raise ValueError
     except ValueError:
+        logger.info(f"Creation of user by admin user {message.from_user.id} was interrupted becouse of incorrect 1 <= int(user_check_priority) <= 4 input")
+
         await message.answer(
             "⚠️ <b>Не удалось выполнить действие!</b>\n\n"
             "Не удалось преобразовать ввод в целое число от 1 до 4."
@@ -536,6 +608,8 @@ async def process_user_comment_to_create(message: Message, state: FSMContext) ->
             raise ValueError
         
     except ValueError:
+        logger.info(f"Creation of user by admin user {message.from_user.id} was interrupted becouse of incorrect 0 <= int(can_user_get_links) <= 1 input")
+
         await message.answer(
             "⚠️ <b>Не удалось выполнить действие!</b>\n\n"
             "Не удалось преобразовать ввод в целое число 0 или 1."
@@ -567,6 +641,7 @@ async def process_user_comment_to_create(message: Message, state: FSMContext) ->
         comment=user_comment,
         created_by=message.from_user.id
     )
+    logger.info(f"Base app profile for user {tg_user_id} was created")
 
     # создаем профиль взаимодействия с песочницей
     await sandbox_profiles_functions.add_new_profile(
@@ -575,6 +650,7 @@ async def process_user_comment_to_create(message: Message, state: FSMContext) ->
         check_priority=user_check_priority,
         can_get_links=can_user_get_links
     )
+    logger.info(f"Sandbox interaction profile for user {tg_user_id} was created")
     
     # возвращаемся в manage users menu
     await message.answer(f"✅ Пользователь с id <code>{tg_user_id}</code> добавлен.")
@@ -608,8 +684,10 @@ async def process_list_all_users(message: Message, state: FSMContext) -> None:
     list_of_users_fromm_app_db: list[AppUserFromDb] = []
     
     if filter_from_admin == custom_keyboars.BTN_MANAGE_USERS_NO_FILTER:
+        logger.info(f"Admin user {message.from_user.id} is going to list app users with no filter")
         list_of_users_fromm_app_db = await users_functions.fetch_all_users_with_filter()
     else:
+        logger.info(f"Admin user {message.from_user.id} is going to list app users with filter")
         list_of_users_fromm_app_db = await users_functions.fetch_all_users_with_filter(comment_filter=filter_from_admin)
 
     # если список пустой
@@ -664,6 +742,8 @@ async def process_manage_app_action(message: Message, state: FSMContext) -> None
     # если нужен бекап БД
     if message.text == custom_keyboars.BTN_MANAGE_APP_GET_DB_BACKUP:
         # открываем и отправляем
+        logger.info(f"Admin user {message.from_user.id} is getting db backup of application")
+
         db_file = FSInputFile(users_functions.FULL_PATH_TO_KERNEL_DB, filename=users_functions.DB_NAME)
         await message.answer_document(db_file, caption="Файл с БД пользователей:")
         await message.answer(
@@ -690,10 +770,13 @@ async def process_manage_app_action(message: Message, state: FSMContext) -> None
 async def process_user_comment_to_create(message: Message, state: FSMContext) -> None:
     
     # получаем информацию по юзеру
+    logger.info(f"User {message.from_user.id} is trying to get his status")
     user_entity: AppUserFromDb = await users_functions.get_user_entity(message.from_user.id)
 
     # если всё еще не создали
     if user_entity is None:
+        logger.info(f"User {message.from_user.id} is still not registred")
+
         await message.answer(
             "⚠️ <b>Вы не зарегистрированы!</b>\n\n"
             "Для получения доступа перешлите Администратору бота это сообщение.\n\n"
@@ -705,6 +788,8 @@ async def process_user_comment_to_create(message: Message, state: FSMContext) ->
 
     # проверяем что юзер в блек листе
     if user_entity.is_blocked:
+        logger.info(f"User {message.from_user.id} is banned in application")
+
         await message.answer(
             f"❌ <b>Доступ для Вас запрещён!</b>\n\n"
             f"Если Вы считаете, что это ошибка, то сообщите об этом Администратору бота.\n\n"
@@ -716,6 +801,8 @@ async def process_user_comment_to_create(message: Message, state: FSMContext) ->
 
     # Во всех прочих случаях определяем меню в зависимости от роли
     if user_entity.user_role == UsersRolesInBot.user:
+        logger.info(f"User {user_entity.tg_user_id} was authorized and got role of {user_entity.user_role}")
+
         await message.answer(
             f"👋 Добро пожаловать!\n\n"
             f"Выберите действие из доступных в списке ниже:",
@@ -730,16 +817,18 @@ async def process_user_comment_to_create(message: Message, state: FSMContext) ->
 @dp.message(SandboxInteractionStates.sandbox_admin_menu, F.text == custom_keyboars.BTN_SANDBOX_MENU_CHECK_API)
 async def process_user_comment_to_create(message: Message, state: FSMContext) -> None:
     
-    await message.answer("Отпрвлен API запрос на проверку. Проверка может занять до 10 секунд.")
+    logger.info(f"Admin user {message.from_user.id} sent API healtcheck request to PTSB")
+
     # получаем состояние API 
+    await message.answer("Отпрвлен API запрос на проверку. Проверка может занять до 10 секунд.")
     api_health_check: ApiHeathCheck = await ptsb_client.make_api_healthcheck()
 
     # обрабатываем статус
     if api_health_check.is_ok:
-        await message.answer(
-            "✅ API PTSB доступен."
-        )
+        logger.info("API healtcheck request is OK")
+        await message.answer("✅ API PTSB доступен.")
     else:
+        logger.warning(f"Error acquired while sending API healthck request. Error text: {api_health_check.error_message}")
         await message.answer(
             f"⚠️ При проврке API возникла ошибка.\n\n{api_health_check.error_message}"
         )
@@ -766,6 +855,8 @@ async def get_sandbox_checks_stats(message: Message, state: FSMContext) -> None:
     user_entity: AppUserFromDb = await users_functions.get_user_entity(message.from_user.id)
 
     if (user_sandbox_profile is None) or (user_entity is None) or user_entity.is_blocked:
+        logger.info(f"User {message.from_user.id} tried to get sandbox profile status, but had lost his access earlier")
+        
         await message.answer(
             "⚠️ Кажется, доступ для Вас прекращен.",
             reply_markup=custom_keyboars.check_status_keyboard
@@ -800,6 +891,8 @@ async def handle_send_url_to_scan(message: Message, state: FSMContext) -> None:
 
     # если юзер больше не существует или заблокирован
     if (user_entity is None) or user_entity.is_blocked:
+        logger.info(f"User {message.from_user.id} tried to send link to check, but had lost his access earlier")
+        
         await message.answer(
             "⚠️ Кажется, доступ для Вас прекращен.",
             reply_markup=custom_keyboars.check_status_keyboard)
@@ -809,9 +902,11 @@ async def handle_send_url_to_scan(message: Message, state: FSMContext) -> None:
     # если юзер закончил на сегодня все свои проверки
     user_sandbox_profile: UserProfileFromDb = await sandbox_profiles_functions.get_profile_entity(message.from_user.id)
     if user_sandbox_profile.remaining_checks == 0:
+        logger.info(f"User {message.from_user.id} tried to send link to check, but has no available checks today")
+
         await message.answer(
             "⚠️ У Вас закончились проверки на сегодня.\n\n"
-            "Обновление проверок происходит каждый день."
+            "Обновление проверок происходит каждый день. Повторите попытку завтра."
         )
         return
     
@@ -871,6 +966,8 @@ async def hadle_send_file_to_scan(message: Message, state: FSMContext) -> None:
 
     # если юзер больше не существует или заблокирован
     if (user_entity is None) or user_entity.is_blocked:
+        logger.info(f"User {message.from_user.id} tried to send file to check, but had lost his access earlier")
+
         await message.answer(
             "⚠️ Кажется, доступ для Вас прекращен.",
             reply_markup=custom_keyboars.check_status_keyboard)
@@ -880,6 +977,8 @@ async def hadle_send_file_to_scan(message: Message, state: FSMContext) -> None:
     # если юзер закончил на сегодня все свои проверки
     user_sandbox_profile: UserProfileFromDb = await sandbox_profiles_functions.get_profile_entity(message.from_user.id)
     if user_sandbox_profile.remaining_checks == 0:
+        logger.info(f"User {message.from_user.id} tried to send file to check, but has no available checks today")
+        
         await message.answer(
             "⚠️ У Вас закончились проверки на сегодня.\n\n"
             "Обновление проверок происходит каждый день."
@@ -948,12 +1047,13 @@ async def upload_file_to_bot(message: Message, state: FSMContext) -> None:
         # заносим это в пользователя
         await state.update_data({SandboxInteractionsParameters.file_to_scan: save_path})
 
-        # отвечаем педику и идем дальше
+        # отвечаем юзеру и идем дальше
+        logger.info(f"File {file_from_user.file_name} was succesfully downloaded to bot from user {message.from_user.id}")
         await message.answer(
             f"✅ Файл <code>{file_from_user.file_name}</code> успешно загружен в бота!"
         )
 
-        # запрашиваем ввод паролей для отправки ссылку на проверку, в любом случае в это состояние
+        # запрашиваем ввод паролей для отправки задания на проверку, в любом случае в это состояние
         await message.answer(
             "Если Вы знаете, что файлы зашифрованы паролем, укажите их сейчас, каждый с новой строки. Всего не более 5 паролей.\n"
             "Если паролей нет, нажмите кнопку ниже.",
@@ -969,12 +1069,14 @@ async def upload_file_to_bot(message: Message, state: FSMContext) -> None:
         new_state = SandboxInteractionStates.sandbox_admin_menu if user_role == UsersRolesInBot.main_admin else SandboxInteractionStates.sandbox_user_menu
 
         if "file is too big" in str(e):
+            logger.info(f"File {file_from_user.file_name} wasn't succesfully downloaded to bot from user {message.from_user.id} becouse of its large size")
             await message.answer(
                 "⚠️ <b>Ошибка при загрузке файла!</b>\n\n"
                 "Файл слишком большой",
                 reply_markup=reply_keyboard
             )
         else:
+            logger.error(f"File {file_from_user.file_name} wasn't succesfully downloaded to bot from user {message.from_user.id}", exc_info=True)
             await message.answer(f"⚠️ Ошибка при загрузке файла: {str(e)}")
         
         await message.answer("Выберите дальнейшее действие:")
@@ -1018,6 +1120,8 @@ async def send_data_to_scan(message: Message, state: FSMContext) -> None:
 
     # если сканит ссылку
     if scan_type == "url":
+        logger.info(f"User {message.from_user.id} sent link to scan")
+
         url_to_scan = user_data.get(SandboxInteractionsParameters.url_to_scan)
         # грузим это наконец то в песочницу
         scan_req: SendScanRequest = await ptsb_client.send_link_to_scan(
@@ -1028,6 +1132,8 @@ async def send_data_to_scan(message: Message, state: FSMContext) -> None:
     
     # если сканит файл
     elif scan_type == "file":
+        logger.info(f"User {message.from_user.id} sent file to scan")
+
         file_to_scan = user_data.get(SandboxInteractionsParameters.file_to_scan)
         # опять грузим это в песочницу
         scan_req: SendScanRequest = await ptsb_client.send_file_to_scan(
@@ -1039,10 +1145,13 @@ async def send_data_to_scan(message: Message, state: FSMContext) -> None:
         # и в любом случае удалям файл от пользака
         if os.path.exists(file_to_scan):
             os.remove(file_to_scan)
+            logger.info(f"File {file_to_scan} from user {message.from_user.id} was deleted from local storage")
         
 
     # если загрузилось не совсем удачно
     if not scan_req.is_ok:
+        logger.warning(f"Scan request from user {message.from_user.id} was unsuccessful. Error: {scan_req.error_message}")
+
         reply_keyboard = custom_keyboars.admin_main_sandbox_keyboard if user_role == UsersRolesInBot.main_admin else custom_keyboars.user_main_sandbox_keyboard
         new_state = SandboxInteractionStates.sandbox_admin_menu if user_role == UsersRolesInBot.main_admin else SandboxInteractionStates.sandbox_user_menu
 
@@ -1057,6 +1166,8 @@ async def send_data_to_scan(message: Message, state: FSMContext) -> None:
     
     # если все таки удачно
     else:
+        logger.info(f"Scan request from user {message.from_user.id} was successful")
+
         # уменьшаем количество проверок + увеличиваем общий счетчик
         decrease = await sandbox_profiles_functions.decrease_remaining_checks(
             tg_user_id=message.from_user.id,
@@ -1069,6 +1180,8 @@ async def send_data_to_scan(message: Message, state: FSMContext) -> None:
         
         # проверка на то, что юзер существует
         if not decrease or not increase:
+            logger.info(f"Tried to lower remaining checks for user {message.from_user.id}, but his profile was not found. Set state check_user_status for user")
+
             await state.clear()
             await state.set_state(UserStates.check_user_status)
             await message.answer(
@@ -1131,6 +1244,8 @@ async def process_get_scan_result(message: Message, state: FSMContext) -> None:
 
     # если API запрос неуспешный
     if scan_results.is_ok == False:
+        logger.warning(f"User {message.from_user.id} tried to get status for scan_id={scan_id_to_get}, but was unsuccessful. Error: {scan_results.error_message}")
+
         await message.answer(
             "⚠️ Не удалось получить результаты.\n\n"
             "Свяжитесь с администратором и передайте ему эту информацию:\n"
@@ -1203,6 +1318,7 @@ async def echo_handler(message: Message, state: FSMContext) -> None:
             reply_markup=ReplyKeyboardRemove()
         )
     else:
+        logger.info(f"User {message.from_user.id} made something, that putted him to default echo_handler")
         await message.answer(
             "⚠️ <b>Что-то пошло не так!</b>\n\n"
             "Если ты видишь это сообщение, ты сделал что-то не так, как я попросил тебя на предыдущем шаге. Повтори, пожалуйста, действие и сделай это так, как я тебя попросил."
@@ -1218,10 +1334,13 @@ async def main() -> None:
     await users_functions.create_table_if_not_exists()
     await sandbox_profiles_functions.create_table_if_not_exists()
 
+    logger.info("Default app db was created and all needed tables in it")
+
     # добавляем первого админа бота в БД перед тем, как бот запустится, если он НЕ существует в БД
     first_admin_entity: AppUserFromDb = await users_functions.get_user_entity(FIRST_BOT_ADMIN_ID)
     if first_admin_entity is None:
-        
+        logger.info(f"Main admin {FIRST_BOT_ADMIN_ID} was not in app db, so adding him to db")    
+    
         # базовый профиль пользователя
         await users_functions.add_new_user(
             tg_user_id=FIRST_BOT_ADMIN_ID,
@@ -1239,14 +1358,17 @@ async def main() -> None:
         )
     
     # шэдулер на обновление количества попыток
+    logger.info("Setting up scheduler to renew amount of remaining_checks for all users")
     scheduler = AsyncIOScheduler(timezone="Europe/Moscow")  # TODO можно указать нужный TZ
     scheduler.add_job(sandbox_profiles_functions.daily_reset_remaining_checks, CronTrigger(hour=0, minute=0))
     scheduler.start()
     
     # инициализация бота через апи токен бота
+    logger.info("Initializing tg bot entity")
     bot = Bot(token=TG_BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 
     # And the run events dispatching
+    logger.info("Starting tg bot entity")
     await dp.start_polling(bot)
 
 
@@ -1254,4 +1376,5 @@ async def main() -> None:
 if __name__ == "__main__":
     
     # запуск мейна в асинке, т.к. бот выполняется асинхронно, а мейн по умолчанию запускается синхронно
+    logger.info("Starting up application")
     asyncio.run(main())
