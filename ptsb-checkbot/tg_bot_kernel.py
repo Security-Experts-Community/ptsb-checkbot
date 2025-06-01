@@ -1166,7 +1166,7 @@ async def send_data_to_scan(message: Message, state: FSMContext) -> None:
     
     # если все таки удачно
     else:
-        logger.warning(f"Scan request from user {message.from_user.id} was successful")
+        logger.info(f"Scan request from user {message.from_user.id} was successful")
 
         # уменьшаем количество проверок + увеличиваем общий счетчик
         decrease = await sandbox_profiles_functions.decrease_remaining_checks(
