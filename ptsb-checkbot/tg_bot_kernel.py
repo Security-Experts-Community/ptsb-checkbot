@@ -1,3 +1,6 @@
+#TODO проверка на то, что пользователь с ролью admin был заблокирован и больше не может взаимодействовать с приложением. Подумать в какой хэндлер
+#TODO если admin пользователь не сможет добавлять пользователей, то может поменять "Создан пользователем" на "Изменен пользователем"
+
 # встроенные либы
 import aiofiles
 import asyncio
@@ -144,13 +147,25 @@ async def handle_ban_user(message: Message, user_entity: AppUserFromDb) -> None:
             "⚠️ <b>Не удалось выполнить действие!</b>\n\n"
             "Нельзя стрелять себе в колени и блокировать самого себя."
         )
+
         logger.info(f"User {message.from_user.id} was not banned by himself")
+        return
+
+    elif user_entity.tg_user_id == FIRST_BOT_ADMIN_ID:
+        await message.answer(
+            "⚠️ <b>Не удалось выполнить действие!</b>\n\n"
+            "Вы не можете заблокировать владельца бота."
+        )
+
+        logger.info(f"User {message.from_user.id} tried to delete main admin of the bot")
+        return
     
     else:
         await users_functions.change_user_state_by_id(user_entity.tg_user_id, 1)
         await message.answer(f"✅ Пользователь <code>{user_entity.tg_user_id}</code> заблокирован.")
 
-        logger.info(f"User {user_entity.tg_user_id} was banned")
+        logger.info(f"User {user_entity.tg_user_id} was banned by {message.from_user.id}")
+        return
 
 # функция разбранить пользователя по id
 async def handle_unban_user(message: Message, user_entity: AppUserFromDb) -> None:
@@ -247,7 +262,7 @@ async def command_start_handler(message: Message, state: FSMContext) -> None:
         return
 
     # Во всех прочих случаях определяем меню в зависимости от роли
-    if current_user_data.user_role == UsersRolesInBot.main_admin:
+    if current_user_data.user_role in [UsersRolesInBot.main_admin, UsersRolesInBot.admin]:
         logger.info(f"User {current_user_id} was authorized and got role of {current_user_data.user_role}")
         
         await message.answer(
@@ -255,6 +270,7 @@ async def command_start_handler(message: Message, state: FSMContext) -> None:
             f"Выберите действие из доступных в списке ниже:",
             reply_markup=custom_keyboars.admin_root_menu_keyboard
         )
+        await state.update_data({AppInteractionsParameters.user_role: current_user_data.user_role})
         await state.set_state(AdminStates.root_admin_menu)
         return
     
@@ -324,6 +340,22 @@ async def return_to_main_admin_menu(message: Message, state: FSMContext) -> None
     custom_keyboars.BTN_MANAGE_USERS_DELETE
 }))
 async def handle_user_id_action_prompt(message: Message, state: FSMContext) -> None:
+    
+    # проверка, что настоящий админ собирается удалять пользователя
+    user_data = await state.get_data()
+    user_role = user_data.get(AppInteractionsParameters.user_role)
+
+    if message.text == custom_keyboars.BTN_MANAGE_USERS_DELETE and user_role == UsersRolesInBot.admin:
+        await message.answer(
+            "⚠️ <b>Не удалось выполнить действие!</b>\n\n"
+            "У вас недостаточно прав для совершения этого действия.",
+            reply_markup=custom_keyboars.manage_users_menu_keyboard
+        )
+        logger.info(f"Admin user {message.from_user.id} tried to delete user, but has no privelege")
+
+        await state.set_state(AdminStates.manage_users_menu)
+        return
+
     text_to_action = {
         custom_keyboars.BTN_MANAGE_USERS_INFO: (
             AdminSingleActionWithId.GET_USER_INFO,
@@ -409,6 +441,21 @@ async def make_single_action_with_user_id(message: Message, state: FSMContext) -
 @dp.message(AdminStates.manage_users_menu, F.text == custom_keyboars.BTN_MANAGE_USERS_ADD)
 async def handle_promt_to_create_user(message: Message, state: FSMContext) -> None:
     
+    # проверка, что настоящий админ собирается создавать пользователя
+    user_data = await state.get_data()
+    user_role = user_data.get(AppInteractionsParameters.user_role)
+    
+    if message.text == custom_keyboars.BTN_MANAGE_USERS_ADD and user_role == UsersRolesInBot.admin:
+        await message.answer(
+            "⚠️ <b>Не удалось выполнить действие!</b>\n\n"
+            "У вас недостаточно прав для совершения этого действия.",
+            reply_markup=custom_keyboars.manage_users_menu_keyboard
+        )
+        logger.info(f"Admin user {message.from_user.id} tried to add a new user, but has no privelege")
+
+        await state.set_state(AdminStates.manage_users_menu)
+        return
+
     logger.info(f"Admin user {message.from_user.id} started process of new user creation")
 
     # обнуляем все переменные в контексте админа перед созданием нового пользователя. для безопасности
@@ -465,8 +512,9 @@ async def process_user_id_to_create(message: Message, state: FSMContext) -> None
     # если всё ок, то записываем user_id и запрашиваем роль для будущего юзера:
     await state.update_data({InputUserParameters.tg_user_id: user_id_to_create})
     await message.answer(
-        "Введите роль для будущего пользователя:\n" +
-        f"1. <code>{UsersRolesInBot.user}</code> - обычный пользователь бота. Имеет права только на проверку файлов.\n"
+        "Введите роль для будущего пользователя:\n"
+        f"1. <code>{UsersRolesInBot.admin}</code> - дополнительный администоратор бота. Имеет возможность блокировать и разблокировать пользователей.\n"
+        f"2. <code>{UsersRolesInBot.user}</code> - обычный пользователь бота. Имеет права только на проверку файлов.\n"
     )
     await state.set_state(AppUserCreation.CREATE_user_role)
     return
@@ -479,12 +527,12 @@ async def process_user_role_to_create(message: Message, state: FSMContext) -> No
     user_role_to_create = message.text
 
     # проверяем, что ввод соответствует названиям ролей в приложении
-    if user_role_to_create != UsersRolesInBot.user:
+    if user_role_to_create not in [UsersRolesInBot.admin, UsersRolesInBot.user]:
         logger.info(f"Creation of user by admin user {message.from_user.id} was interrupted becouse of incorrect user_role input")
 
         await message.answer(
             "⚠️ <b>Не удалось выполнить действие!</b>"
-            f"Введено значение, отличное от <code>{UsersRolesInBot.user}</code>."
+            f"Введено значение, отличное от <code>{UsersRolesInBot.admin}</code> или <code>{UsersRolesInBot.user}</code>."
         )
         await message.answer(
             "Выберите дальнейшее действие:",
@@ -725,6 +773,19 @@ async def process_list_all_users(message: Message, state: FSMContext) -> None:
 @dp.message(AdminStates.root_admin_menu, F.text == custom_keyboars.BTN_ADMIN_MENU_MANAGE_APP)
 async def go_to_manage_app_menu(message: Message, state: FSMContext) -> None:
     
+    # проверка, что настоящий админ пытается попасть в меню управления приложением
+    user_data = await state.get_data()
+    user_role = user_data.get(AppInteractionsParameters.user_role)
+
+    if message.text == custom_keyboars.BTN_ADMIN_MENU_MANAGE_APP and user_role == UsersRolesInBot.admin:
+        await message.answer(
+            "⚠️ <b>Не удалось выполнить действие!</b>\n\n"
+            "У вас недостаточно прав для совершения этого действия.",
+            reply_markup=custom_keyboars.admin_root_menu_keyboard
+        )
+        await state.set_state(AdminStates.root_admin_menu)
+        return
+
     await message.answer(
         "📋 Меню управления приложением.\n\nВыберите действие:",
         reply_markup=custom_keyboars.admin_manage_app_keyboard
@@ -800,6 +861,18 @@ async def process_user_comment_to_create(message: Message, state: FSMContext) ->
         return
 
     # Во всех прочих случаях определяем меню в зависимости от роли
+    if user_entity.user_role == UsersRolesInBot.admin:
+        logger.info(f"User {user_entity} was authorized and got role of {user_entity.user_role}")
+        
+        await message.answer(
+            f"👑 Добро пожаловать, Администратор!\n\n"
+            f"Выберите действие из доступных в списке ниже:",
+            reply_markup=custom_keyboars.admin_root_menu_keyboard
+        )
+        await state.update_data({AppInteractionsParameters.user_role: user_entity.user_role})
+        await state.set_state(AdminStates.root_admin_menu)
+        return
+
     if user_entity.user_role == UsersRolesInBot.user:
         logger.info(f"User {user_entity.tg_user_id} was authorized and got role of {user_entity.user_role}")
 

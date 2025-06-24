@@ -16,6 +16,13 @@ class InputSandboxProfileParameters:
     check_priority = "check_priority"
     can_get_links = "can_get_links"
 
+# параметры пользователей при взаимодействии с приложением
+class AppInteractionsParameters:
+    """
+    Параметры, которые задаются для пользователя на уровне всего приложения
+    """
+    user_role = "user_role"
+
 # параметры пользователей при взаимодействии с функционалом песочницы
 class SandboxInteractionsParameters:
     """
