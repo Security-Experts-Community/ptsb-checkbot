@@ -1,4 +1,6 @@
-#TODO проверка на то, что пользователь с ролью admin был заблокирован и больше не может взаимодействовать с приложением. Подумать в какой хэндлер
+#TODO подумать куда вставить проверку заблокированности admin пользователя, мб создать универсальную функцию
+#TODO изменить название user_role внутри класса AppInteractionsParameters. сделать все названия всех параметров уникальными?
+#TODO проверить какие параметры в метаданных пользователя очищаются, когда содзается задание на проверку
 #TODO если admin пользователь не сможет добавлять пользователей, то может поменять "Создан пользователем" на "Изменен пользователем"
 
 # встроенные либы
@@ -157,7 +159,7 @@ async def handle_ban_user(message: Message, user_entity: AppUserFromDb) -> None:
             "Вы не можете заблокировать владельца бота."
         )
 
-        logger.info(f"User {message.from_user.id} tried to delete main admin of the bot")
+        logger.info(f"User {message.from_user.id} tried to ban main admin of the bot")
         return
     
     else:
@@ -291,6 +293,26 @@ async def command_start_handler(message: Message, state: FSMContext) -> None:
 # хэндлер для root_admin_menu -> manage_users_menu // переход в управление пользователями
 @dp.message(AdminStates.root_admin_menu, F.text == custom_keyboars.BTN_ADMIN_MENU_MANAGE_USERS)
 async def manage_users_admin_menu(message: Message, state: FSMContext) -> None:
+    
+    # получаем метаданные пользователя, а именно его роль
+    curret_user_data = await state.get_data()
+    current_user_role = curret_user_data.get(AppInteractionsParameters.user_role)
+
+    # проверка на то, что admin пользователь может быть забанен
+    if current_user_role == UsersRolesInBot.admin:
+
+        current_user_entity: AppUserFromDb = await users_functions.get_user_entity(message.from_user.id)
+        if current_user_entity is None or current_user_entity.is_blocked:
+            await message.answer(
+                "⚠️ Кажется, доступ для Вас прекращен.",
+                reply_markup=custom_keyboars.check_status_keyboard
+            )
+            logger.info(f"Admin user {message.from_user.id}")
+
+            await state.set_data({AppInteractionsParameters.user_role: None})
+            await state.set_state(UserStates.check_user_status)
+            return
+
     await message.answer(
         "📋 Меню управления пользователями.\n\nВыберите действие:",
         reply_markup=custom_keyboars.manage_users_menu_keyboard
@@ -313,6 +335,26 @@ async def return_to_main_admin_menu(message: Message, state: FSMContext) -> None
 # хэндлер для root_admin_menu -> sandbox_admin_menu // переход во взаимодейсвтие с песочницей
 @dp.message(AdminStates.root_admin_menu, F.text == custom_keyboars.BTN_ADMIN_MENU_GO_TO_SANDBOX)
 async def sandbox_admin_menu(message: Message, state: FSMContext) -> None:
+    
+    # получаем метаданные пользователя, а именно его роль
+    curret_user_data = await state.get_data()
+    current_user_role = curret_user_data.get(AppInteractionsParameters.user_role)
+
+    # проверка на то, что admin пользователь может быть забанен
+    if current_user_role == UsersRolesInBot.admin:
+
+        current_user_entity: AppUserFromDb = await users_functions.get_user_entity(message.from_user.id)
+        if current_user_entity is None or current_user_entity.is_blocked:
+            await message.answer(
+                "⚠️ Кажется, доступ для Вас прекращен.",
+                reply_markup=custom_keyboars.check_status_keyboard
+            )
+            logger.info(f"Admin user {message.from_user.id}")
+
+            await state.set_data({AppInteractionsParameters.user_role: None})
+            await state.set_state(UserStates.check_user_status)
+            return
+    
     await message.answer(
         "📋 Меню взаимодействия с песочницей.\n\nВыберите действие:",
         reply_markup=custom_keyboars.admin_main_sandbox_keyboard
@@ -861,8 +903,8 @@ async def process_user_comment_to_create(message: Message, state: FSMContext) ->
         return
 
     # Во всех прочих случаях определяем меню в зависимости от роли
-    if user_entity.user_role == UsersRolesInBot.admin:
-        logger.info(f"User {user_entity} was authorized and got role of {user_entity.user_role}")
+    if user_entity.user_role in  [UsersRolesInBot.main_admin, UsersRolesInBot.admin]:
+        logger.info(f"User {user_entity.tg_user_id} was authorized and got role of {user_entity.user_role}")
         
         await message.answer(
             f"👑 Добро пожаловать, Администратор!\n\n"
@@ -1138,8 +1180,8 @@ async def upload_file_to_bot(message: Message, state: FSMContext) -> None:
     except TelegramBadRequest as e:
         user_data = await state.get_data()
         user_role = user_data.get(SandboxInteractionsParameters.user_role)
-        reply_keyboard = custom_keyboars.admin_main_sandbox_keyboard if user_role == UsersRolesInBot.main_admin else custom_keyboars.user_main_sandbox_keyboard
-        new_state = SandboxInteractionStates.sandbox_admin_menu if user_role == UsersRolesInBot.main_admin else SandboxInteractionStates.sandbox_user_menu
+        reply_keyboard = custom_keyboars.user_main_sandbox_keyboard if user_role == UsersRolesInBot.user else custom_keyboars.admin_main_sandbox_keyboard 
+        new_state = SandboxInteractionStates.sandbox_user_menu if user_role == UsersRolesInBot.user else SandboxInteractionStates.sandbox_admin_menu
 
         if "file is too big" in str(e):
             logger.info(f"File {file_from_user.file_name} wasn't succesfully downloaded to bot from user {message.from_user.id} becouse of its large size")
@@ -1225,8 +1267,8 @@ async def send_data_to_scan(message: Message, state: FSMContext) -> None:
     if not scan_req.is_ok:
         logger.warning(f"Scan request from user {message.from_user.id} was unsuccessful. Error: {scan_req.error_message}")
 
-        reply_keyboard = custom_keyboars.admin_main_sandbox_keyboard if user_role == UsersRolesInBot.main_admin else custom_keyboars.user_main_sandbox_keyboard
-        new_state = SandboxInteractionStates.sandbox_admin_menu if user_role == UsersRolesInBot.main_admin else SandboxInteractionStates.sandbox_user_menu
+        reply_keyboard = custom_keyboars.user_main_sandbox_keyboard if user_role == UsersRolesInBot.user else custom_keyboars.admin_main_sandbox_keyboard 
+        new_state = SandboxInteractionStates.sandbox_user_menu if user_role == UsersRolesInBot.user else SandboxInteractionStates.sandbox_admin_menu
 
         await message.answer(
             "⚠️ Не удалось отправить запрос на проверку.\n\n"
@@ -1312,8 +1354,8 @@ async def process_get_scan_result(message: Message, state: FSMContext) -> None:
 
     # а также клавиатуру, и состояние, которую нужно будет отрисовать на основании роли
     user_role = user_data.get(SandboxInteractionsParameters.user_role)
-    reply_keyboard = custom_keyboars.admin_main_sandbox_keyboard if user_role == UsersRolesInBot.main_admin else custom_keyboars.user_main_sandbox_keyboard
-    new_state = SandboxInteractionStates.sandbox_admin_menu if user_role == UsersRolesInBot.main_admin else SandboxInteractionStates.sandbox_user_menu
+    reply_keyboard = custom_keyboars.user_main_sandbox_keyboard if user_role == UsersRolesInBot.user else custom_keyboars.admin_main_sandbox_keyboard 
+    new_state = SandboxInteractionStates.sandbox_user_menu if user_role == UsersRolesInBot.user else SandboxInteractionStates.sandbox_admin_menu 
 
     # если API запрос неуспешный
     if scan_results.is_ok == False:
