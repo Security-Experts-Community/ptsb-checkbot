@@ -2,6 +2,9 @@
 
 Telegram-бот для проверки файлов и URL-адресов через PT Sandbox API
 
+![PT Sandbox](https://img.shields.io/badge/PT_Sandbox-5.23-6f42c1?style=for-the-badge&logo=shield-check&logoColor=white)  
+*Текущая версия приложения проверена и работает с указанной версией PT Sandbox*
+
 ---
 
 ## 📋 Содержание
