@@ -1360,7 +1360,13 @@ async def main() -> None:
     # шэдулер на обновление количества попыток
     logger.info("Setting up scheduler to renew amount of remaining_checks for all users")
     scheduler = AsyncIOScheduler(timezone="Europe/Moscow")  # TODO можно указать нужный TZ
-    scheduler.add_job(sandbox_profiles_functions.daily_reset_remaining_checks, CronTrigger(hour=0, minute=0))
+    scheduler.add_job(
+        sandbox_profiles_functions.daily_reset_remaining_checks,
+        CronTrigger(hour=0, minute=0),
+        misfire_grace_time=60 * 60,
+        coalesce=True,
+        max_instances=1
+    )
     scheduler.start()
     
     # инициализация бота через апи токен бота
