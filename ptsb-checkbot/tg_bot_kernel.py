@@ -1,9 +1,9 @@
 # встроенные либы
-import aiofiles
 import asyncio
 import os
 import logging
 import sys
+
 
 ## классы из устанавливаемых либ
 # для работы с ТГ
@@ -54,11 +54,8 @@ FIRST_BOT_ADMIN_ID = int(os.getenv('FIRST_BOT_ADMIN_ID'))
 MAX_DOWNLOAD_RETRIES: int = 3           # максимальное количество попыток перезапуска бота #TODO: вынести в переменную?
 DOWNLOAD_TIMEOUT: int = 300             # таймаут на попытку загрузки на весь файл (секунд)
 DOWNLOAD_CHUNCK_SIZE: int = 64 * 1024   # максимальный размер чанка, который скачиваем за установленный таймаут (байт)
-DOWNLOAD_PROGRESS_UPD_SECS: int = 1     # интервал, через который обновлять пользователю инфо о том, что его файл загрузился в бота (секунд) 
 DOWNLOADL_RETRY_TIME: int = 5           # время через которое будет осуществлена повторная попытка загрузки файла (секунд)
 
-# минимально возможное время паузы между ответами пользователю, если можно отрпавить не более 60 сообщений в секунду
-TG_RPL_MIN_INTERVAL: float = 60 / 50    # 50 сообщений в минуту (секунд)
 
 ### логирование
 # создание логгера
@@ -1035,21 +1032,23 @@ async def upload_file_to_bot(message: Message, state: FSMContext) -> None:
         await state.set_state(upload_file_to_bot)
         return
 
+    # получаем объект бота через апи
+    bot = message.bot
+    
+    telegram_file_id = await bot.get_file(file_from_user.file_id)       # получаем id файла
+    file_path_on_server = telegram_file_id.file_path                    # берем полный путь к файлу на серверах ТГ
+    file_name = f"TG-{message.from_user.id}-{file_from_user.file_name}" # имя файла который мы создадим локально = TG+<user_id>+<имя файла от юзера>
+    downloaded_file_path = os.path.join(DOWNLODAD_DIR, file_name)       # устанавливаем полный путь к файлу, который сохраняем в папку DOWNLOAD_DIR
+    
+    # танцы с бубном, чтобы чё то скачать и так чтобы не сломать и не было утечки памяти
     try:
-        # получаем объект бота через апи
-        bot = message.bot
-        
-        telegram_file_id = await bot.get_file(file_from_user.file_id)       # получаем id файла
-        file_path_on_server = telegram_file_id.file_path                    # берем полный путь к файлу на серверах ТГ
-        file_name = f"TG-{message.from_user.id}-{file_from_user.file_name}" # имя файла который мы создадим локально = TG+<user_id>+<имя файла от юзера>
-        save_path = os.path.join(DOWNLODAD_DIR, file_name)                  # устанавливаем полный путь к файлу, который сохраняем в папку DOWNLOAD_DIR
 
         # информируем пользователя о том, что собираемся начать процесс загрузки файла
         # информирование нужно, т.к. процесс загрузки может занять значительное время из-за блокировок ТГ
-        info_message_for_download = await message.answer(
+        await message.answer(
             "📥 <b>Выполняю загрузку файла</b>\n"
             f"<code>{file_from_user.file_name}</code>\n\n"
-            "Прогресс: 0%"
+            "Загрузка может занять продолжительное время в связи с замедлением работы ТГ в РФ."
         )
 
         # начинаем процесс скачивания файла с попытками перезапуска в случае ошибок
@@ -1057,47 +1056,16 @@ async def upload_file_to_bot(message: Message, state: FSMContext) -> None:
             try:
                 logger.info(f"Starting attempt №{download_attempt + 1} downloading file {file_from_user.file_name} from user {message.from_user.id}")
                 
-                # скачиваем файл как байты с серверов телеграма используя путь к файлу на сервере тг
-                file_bytes_data = await bot.download_file(
+                # скачиваем файл напрямую внутрь контейнера, используя путь к файлу на сервере ТГ
+                await bot.download_file(
                     file_path=file_path_on_server,
+                    destination=downloaded_file_path,
                     timeout=DOWNLOAD_TIMEOUT,
                     chunk_size=DOWNLOAD_CHUNCK_SIZE
                 )
 
-                # сохраняем файл чанками
-                async with aiofiles.open(save_path,"wb") as downloaded_file:
-                    total_bytes_downloaded: int = 0 # объем скачанного файла
-                    last_update_time: float = 0     # момент времени, когда последний раз обновляли информацию о статусе загрузки
-                    # читаем файл порциями
-                    while True:
-                        one_file_chunk = file_bytes_data.read(DOWNLOAD_CHUNCK_SIZE)
-                        if not one_file_chunk:
-                            break
-                        
-                        await downloaded_file.write(one_file_chunk)
-                        total_bytes_downloaded += len(one_file_chunk)
-
-                        # # Получаем текущее время
-                        # current_time = asyncio.get_event_loop().time()
-
-                        # # обновляем текст только если прошло TG_RPL_MIN_INTERVAL секунд
-                        # if current_time - last_update_time >= TG_RPL_MIN_INTERVAL:
-                        #     download_percent = int(total_bytes_downloaded / file_from_user.file_size * 100)
-                        #     await info_message_for_download.edit_text(
-                        #         "📥 <b>Выполняю загрузку файла</b>\n"
-                        #         f"<code>{file_from_user.file_name}</code>\n\n"
-                        #         f"Загружно {total_bytes_downloaded / 1024 / 1024:.2f} МБ из {file_from_user.file_size / 1024 / 1024:.2f} МБ\n"
-                        #         f"Прогресс: {download_percent}%\n"
-                        #         f"last_update_time {last_update_time}\n"
-                        #         f"current_time {current_time}"
-                        #     )
-                        # last_update_time = current_time
-
-                # закончили загрузку
-                await info_message_for_download.delete()
-
                 # заносим путь к загруженному файлу в контекст текущего пользователя
-                await state.update_data({SandboxInteractionsParameters.file_to_scan: save_path})
+                await state.update_data({SandboxInteractionsParameters.file_to_scan: downloaded_file_path})
 
                 # отвечаем юзеру и идем дальше
                 logger.info(f"File {file_from_user.file_name} was succesfully downloaded to bot from user {message.from_user.id}")
@@ -1116,14 +1084,18 @@ async def upload_file_to_bot(message: Message, state: FSMContext) -> None:
             
             # ошибки, связанные с таймаутом ожидания загрузки файла пользователем
             except (TimeoutError, TelegramNetworkError) as download_error:
+                # удаляем частично скачанный файл если он существует
+                if os.path.exists(downloaded_file_path):
+                    os.remove(downloaded_file_path)
+                    logger.info(f"File {file_from_user.file_name} was deleted from local storage after unseccessful download try №{download_attempt + 1} from user {message.from_user.id}") 
                 # пытаемся сначала через указанное время секунд, если попытка не крайняя
                 if download_attempt < MAX_DOWNLOAD_RETRIES - 1:
-                    logger.warning(f"Attempt №{download_attempt + 1} to download file {file_from_user.file_name} from user {message.from_user.id} failed. Retrying in {DOWNLOADL_RETRY_TIME}.")
+                    logger.warning(f"Attempt №{download_attempt + 1} to download file {file_from_user.file_name} from user {message.from_user.id} failed. Retrying in {DOWNLOADL_RETRY_TIME}")
                     await asyncio.sleep(DOWNLOADL_RETRY_TIME)
                 
                 # если попытка всё таки крайняя - кидаем excpetrion выше
                 else:
-                    logger.error(f"Final attempt to download file {file_from_user.file_name} from user {message.from_user.id} failed.")
+                    logger.error(f"Final attempt to download file {file_from_user.file_name} from user {message.from_user.id} failed")
                     raise download_error
     
     # обработка если пользователь будет пытаться слишком часто загрузить файл
@@ -1133,9 +1105,14 @@ async def upload_file_to_bot(message: Message, state: FSMContext) -> None:
             "⚠️ <b>Слишком много запросов!</b>\n\n"
             f"Пожалуйста, подождите {e.retry_after} секунд и попробуйте снова."
         )
+        # удаляем частично скачанный файл если он существует
+        if os.path.exists(downloaded_file_path):
+            os.remove(downloaded_file_path)
+            logger.info(f"File {file_from_user.file_name} was deleted from local storage after flood from user {message.from_user.id}") 
+        
         # отправляем юзера ждать
         await asyncio.sleep(e.retry_after)
-        await message.answer("Можете попробовать снова отправить файл на проверку.")
+        await message.answer("Можете попробовать снова отправить мне файл на проверку.")
         await state.set_state(SandboxInteractionStates.upload_file_to_scan)
         await state.update_data({SandboxInteractionsParameters.file_uploaded: False})
         return
@@ -1153,6 +1130,13 @@ async def upload_file_to_bot(message: Message, state: FSMContext) -> None:
             "Проблемы с соединением. Пожалуйста, попробуйте позже, отправьте файл меньшего размера или отправьте его через ссылку на скачивание из внешнего ресурса.",
             reply_markup=reply_keyboard
         )
+
+        # удаляем частично скачанный файл если он существует
+        if os.path.exists(downloaded_file_path):
+            os.remove(downloaded_file_path)
+            logger.info(f"File {file_from_user.file_name} was deleted from local storage after timeout error from user {message.from_user.id}") 
+        
+        # отправляем юзера загружать файл на проверку заново
         await state.set_state(new_state)
         await state.update_data({SandboxInteractionsParameters.file_uploaded: False})
         return
@@ -1178,7 +1162,13 @@ async def upload_file_to_bot(message: Message, state: FSMContext) -> None:
                 "Свяжитесь с Администратором и перешлите ему это сообщение.",
                 reply_markup=reply_keyboard
             )
+
+        # удаляем частично скачанный файл если он существует
+        if os.path.exists(downloaded_file_path):
+            os.remove(downloaded_file_path)
+            logger.info(f"File {file_from_user.file_name} was deleted from local storage after unexpected error from user {message.from_user.id}") 
         
+        # отправляем юзера в начало
         await message.answer("Выберите дальнейшее действие:")
         await state.set_state(new_state)
         return
@@ -1245,7 +1235,7 @@ async def send_data_to_scan(message: Message, state: FSMContext) -> None:
         # и в любом случае удалям файл от пользака
         if os.path.exists(file_to_scan):
             os.remove(file_to_scan)
-            logger.info(f"File {file_to_scan} from user {message.from_user.id} was deleted from local storage")
+            logger.info(f"File {file_to_scan} from user {message.from_user.id} was deleted from local storage after sending it to scan")
         
 
     # если загрузилось не совсем удачно
