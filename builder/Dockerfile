@@ -13,5 +13,5 @@ COPY ptsb-checkbot/ .
 # Установка зависимостей Python
 RUN pip install --no-cache-dir -r requirements.txt
 
-# стартуем сука!
+# стартуем
 CMD [ "python", "tg_bot_kernel.py"]
