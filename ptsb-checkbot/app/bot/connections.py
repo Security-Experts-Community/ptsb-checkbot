@@ -12,10 +12,10 @@ from aiohttp import BasicAuth                               # авторизац
 
 ### константы
 # использование прокси
-PROXY_ADDR = str(os.getenv('PROXY_ADDR'))           # адрес прокси сервера
-PROXY_PORT = str(os.getenv('PROXY_PORT'))           # порт подключения
-PROXY_USER = str(os.getenv('PROXY_USER'))           # пользователь подключения
-PROXY_PASSWORD = str(os.getenv('PROXY_PASSWORD'))   # пароль для авторизации
+PROXY_ADDR = str(os.getenv('PROXY_ADDR')) if os.getenv('PROXY_ADDR') else None  # адрес прокси серверa
+PROXY_PORT = str(os.getenv('PROXY_PORT')) if os.getenv('PROXY_PORT') else None  # порт подключения
+PROXY_USER = str(os.getenv('PROXY_USER')) if os.getenv('PROXY_USER') else None  # пользователь подключения
+PROXY_PASS = str(os.getenv('PROXY_PASS')) if os.getenv('PROXY_PASS') else None  # пароль для авторизации
 
 
 # создание сессии с серверами ТГ #TODO поддержка доп протоколов
@@ -36,7 +36,7 @@ def create_session_to_tg() -> AiohttpSession:
         
         # добавляем авторизацию при необходимости
         if PROXY_USER:
-            proxy_auth = BasicAuth(login=PROXY_USER, password=PROXY_PASSWORD) if PROXY_USER else None
+            proxy_auth = BasicAuth(login=PROXY_USER, password=PROXY_PASS) if PROXY_USER else None
             session_kwargs['proxy'] = (proxy_url, proxy_auth)
         else:
             session_kwargs['proxy'] = proxy_url
