@@ -25,7 +25,7 @@ echo "VERIFY_SSL_CONNECTIONS: Check SSL connections while sending api requests t
 echo "PROXY_ADDR: Use proxy server by bot to access telegram servers (Do not enter if not needed)"
 echo "PROXY_PORT: Port for proxy server"
 echo "PROXY_USER: User name to authorize on proxy server (Do not enter if not needed)"
-echo "PROXY_PASSWORD: Password for user to access proxy server"
+echo "PROXY_PASS: Password for user to access proxy server"
 echo "═════════════════════════════════════════════════════════════════════════════"
 echo " "
 
@@ -53,7 +53,7 @@ input_with_default "VERIFY_SSL_CONNECTIONS" "$VERIFY_SSL_CONNECTIONS"
 input_with_default "PROXY_ADDR" "$PROXY_ADDR"
 input_with_default "PROXY_PORT" "$PROXY_PORT"
 input_with_default "PROXY_USER" "$PROXY_USER"
-input_with_default "PROXY_PASSWORD" "$PROXY_PASSWORD"
+input_with_default "PROXY_PASS" "$PROXY_PASS"
 
 cat << EOF > ./config/default.env
 TG_BOT_TOKEN=${TG_BOT_TOKEN}
@@ -64,7 +64,7 @@ VERIFY_SSL_CONNECTIONS=${VERIFY_SSL_CONNECTIONS}
 PROXY_ADDR=${PROXY_ADDR}
 PROXY_PORT=${PROXY_PORT}
 PROXY_USER=${PROXY_USER}
-PROXY_PASSWORD=${PROXY_PASSWORD}
+PROXY_PASS=${PROXY_PASS}
 EOF
 
 echo " "
