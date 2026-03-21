@@ -22,6 +22,10 @@ echo "FIRST_BOT_ADMIN_ID: TG ID of main administrator of the bot, mostly - your 
 echo "PTSB_ROOT_ADDR: Web address of PT Sandbox (without https://), (FQDN or IP)."
 echo "PTSB_TOKEN: Access token to PT Sandbox for sending objects to check via API."
 echo "VERIFY_SSL_CONNECTIONS: Check SSL connections while sending api requests to PT Sandbox (0 - no / 1 - yes)."
+echo "PROXY_ADDR: Use proxy server by bot to access telegram servers (Do not enter if not needed)"
+echo "PROXY_PORT: Port for proxy server"
+echo "PROXY_USER: User name to authorize on proxy server (Do not enter if not needed)"
+echo "PROXY_PASSWORD: Password for user to access proxy server"
 echo "═════════════════════════════════════════════════════════════════════════════"
 echo " "
 
