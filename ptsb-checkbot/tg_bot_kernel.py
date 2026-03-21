@@ -6,9 +6,12 @@ import sys
 
 
 ## классы из устанавливаемых либ
+# для настройки работы прокси
+from aiohttp import BasicAuth
 # для работы с ТГ
 from aiogram import Bot, Dispatcher, F                      # ядро бота
 from aiogram.client.default import DefaultBotProperties
+from aiogram.client.session.aiohttp import AiohttpSession   # для настройки взаимодействия с ТГ через проксю
 from aiogram.enums import ParseMode                         # для обработки сообщений в html вёрстке
 from aiogram.filters import CommandStart                    # обработка команды /start
 from aiogram.filters import StateFilter                     # работа сразу с несколькими состояниями
@@ -21,7 +24,7 @@ from aiogram.exceptions import TelegramBadRequest, TelegramNetworkError, Telegra
 from aiogram.types import FSInputFile                       # отправка файлов из бота
 # для шедулера на регулярное обновление БД
 from apscheduler.schedulers.asyncio import AsyncIOScheduler     # выполнение обновления проверок пользователей по расписанию
-from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.cron import CronTrigger               # настройка расписания для такого обновления
 
 
 # самописные либы
@@ -50,12 +53,17 @@ TG_BOT_TOKEN = str(os.getenv('TG_BOT_TOKEN'))
 # TG id первого администратора ТГ бота
 FIRST_BOT_ADMIN_ID = int(os.getenv('FIRST_BOT_ADMIN_ID'))
 
-## загрузка файлов
+# загрузка файлов
 MAX_DOWNLOAD_RETRIES: int = 3           # максимальное количество попыток перезапуска бота #TODO: вынести в переменную?
 DOWNLOAD_TIMEOUT: int = 300             # таймаут на попытку загрузки на весь файл (секунд)
 DOWNLOAD_CHUNCK_SIZE: int = 64 * 1024   # максимальный размер чанка, который скачиваем за установленный таймаут (байт)
 DOWNLOADL_RETRY_TIME: int = 5           # время через которое будет осуществлена повторная попытка загрузки файла (секунд)
 
+# использование прокси
+PROXY_ADDR = str(os.getenv('PROXY_ADDR'))           # адрес прокси сервера
+PROXY_PORT = str(os.getenv('PROXY_PORT'))           # порт подключения
+PROXY_USER = str(os.getenv('PROXY_USER'))           # пользователь подключения
+PROXY_PASSWORD = str(os.getenv('PROXY_PASSWORD'))   # пароль для авторизации
 
 ### логирование
 # создание логгера
@@ -1441,10 +1449,10 @@ async def main() -> None:
 
         # профиль взаимодействия с песочницей
         await sandbox_profiles_functions.add_new_profile(
-            FIRST_BOT_ADMIN_ID,
-            1_000_000,
-            4,
-            1
+            tg_user_id=FIRST_BOT_ADMIN_ID,
+            max_available_checks=1_000_000,
+            check_priority=4,
+            can_get_links=1
         )
     
     # шэдулер на обновление количества попыток
@@ -1459,12 +1467,28 @@ async def main() -> None:
     )
     scheduler.start()
     
+    # настройка https сессии для использования прокси
+    if PROXY_ADDR is not None:
+        # параметры авторизации
+        proxy_auth = BasicAuth(login=PROXY_USER, password=PROXY_PASSWORD)
+        # создание самой сесии
+        session = AiohttpSession(
+            proxy = (
+                f"socks5://{PROXY_ADDR}:{PROXY_PORT}/",
+                proxy_auth
+            )
+        )
+    else:
+        session = AiohttpSession()
+
     # инициализация бота через апи токен бота
     logger.info("Initializing tg bot entity")
     bot = Bot(
-        token=TG_BOT_TOKEN,
-        default=DefaultBotProperties(
-            parse_mode=ParseMode.HTML)
+            token=TG_BOT_TOKEN,
+            default=DefaultBotProperties(
+                parse_mode=ParseMode.HTML
+            ),
+            session=session 
         )
 
     # And the run events dispatching
