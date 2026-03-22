@@ -22,6 +22,10 @@ echo "FIRST_BOT_ADMIN_ID: TG ID of main administrator of the bot, mostly - your 
 echo "PTSB_ROOT_ADDR: Web address of PT Sandbox (without https://), (FQDN or IP)."
 echo "PTSB_TOKEN: Access token to PT Sandbox for sending objects to check via API."
 echo "VERIFY_SSL_CONNECTIONS: Check SSL connections while sending api requests to PT Sandbox (0 - no / 1 - yes)."
+echo "PROXY_ADDR: Use proxy server by bot to access telegram servers (Do not enter if not needed)"
+echo "PROXY_PORT: Port for proxy server"
+echo "PROXY_USER: User name to authorize on proxy server (Do not enter if not needed)"
+echo "PROXY_PASS: Password for user to access proxy server"
 echo "═════════════════════════════════════════════════════════════════════════════"
 echo " "
 
@@ -46,6 +50,10 @@ input_with_default "FIRST_BOT_ADMIN_ID" "$FIRST_BOT_ADMIN_ID"
 input_with_default "PTSB_ROOT_ADDR" "$PTSB_ROOT_ADDR"
 input_with_default "PTSB_TOKEN" "$PTSB_TOKEN"
 input_with_default "VERIFY_SSL_CONNECTIONS" "$VERIFY_SSL_CONNECTIONS"
+input_with_default "PROXY_ADDR" "$PROXY_ADDR"
+input_with_default "PROXY_PORT" "$PROXY_PORT"
+input_with_default "PROXY_USER" "$PROXY_USER"
+input_with_default "PROXY_PASS" "$PROXY_PASS"
 
 cat << EOF > ./config/default.env
 TG_BOT_TOKEN=${TG_BOT_TOKEN}
@@ -53,6 +61,10 @@ FIRST_BOT_ADMIN_ID=${FIRST_BOT_ADMIN_ID}
 PTSB_ROOT_ADDR=${PTSB_ROOT_ADDR}
 PTSB_TOKEN=${PTSB_TOKEN}
 VERIFY_SSL_CONNECTIONS=${VERIFY_SSL_CONNECTIONS}
+PROXY_ADDR=${PROXY_ADDR}
+PROXY_PORT=${PROXY_PORT}
+PROXY_USER=${PROXY_USER}
+PROXY_PASS=${PROXY_PASS}
 EOF
 
 echo " "

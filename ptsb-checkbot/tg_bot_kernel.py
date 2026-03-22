@@ -1,11 +1,22 @@
-# встроенные либы
+### либы
+## встроенные
 import asyncio
 import os
 import logging
 import sys
 
+## самописные
+from app.db import users_functions              # взаимодействие с таблицей юзерочков
+from app.db import sandbox_profiles_functions   # взаимодействие с таблицей профилей ptsb
+from app.bot import custom_keyboars             # клавиатуры для менюшек бота
+from app.bot import connections                 # создание сессий с серверами ТГ
+from app.api import ptsb_client                 # взаимодейсвие с песочницей по API
 
-## классы из устанавливаемых либ
+
+### классы
+## устанавливаемые
+# для создания сессий
+from aiogram.client.session.aiohttp import AiohttpSession   # класс сессий с тг для явной типизации
 # для работы с ТГ
 from aiogram import Bot, Dispatcher, F                      # ядро бота
 from aiogram.client.default import DefaultBotProperties
@@ -21,17 +32,9 @@ from aiogram.exceptions import TelegramBadRequest, TelegramNetworkError, Telegra
 from aiogram.types import FSInputFile                       # отправка файлов из бота
 # для шедулера на регулярное обновление БД
 from apscheduler.schedulers.asyncio import AsyncIOScheduler     # выполнение обновления проверок пользователей по расписанию
-from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.cron import CronTrigger               # настройка расписания для такого обновления
 
-
-# самописные либы
-from app.db import users_functions              # взаимодействие с таблицей юзерочков
-from app.db import sandbox_profiles_functions   # взаимодействие с таблицей профилей ptsb
-from app.bot import custom_keyboars             # клавиатуры для менюшек бота
-from app.api import ptsb_client                 # взаимодейсвие с песочницей по API
-
-
-# самописные классы
+## самописные
 from app.db.users_functions import AppUserFromDb
 from app.db.sandbox_profiles_functions import UserProfileFromDb
 from app.api.ptsb_client import ApiHeathCheck, SendScanRequest, GetScanResust
@@ -50,7 +53,7 @@ TG_BOT_TOKEN = str(os.getenv('TG_BOT_TOKEN'))
 # TG id первого администратора ТГ бота
 FIRST_BOT_ADMIN_ID = int(os.getenv('FIRST_BOT_ADMIN_ID'))
 
-## загрузка файлов
+# загрузка файлов
 MAX_DOWNLOAD_RETRIES: int = 3           # максимальное количество попыток перезапуска бота #TODO: вынести в переменную?
 DOWNLOAD_TIMEOUT: int = 300             # таймаут на попытку загрузки на весь файл (секунд)
 DOWNLOAD_CHUNCK_SIZE: int = 64 * 1024   # максимальный размер чанка, который скачиваем за установленный таймаут (байт)
@@ -1441,10 +1444,10 @@ async def main() -> None:
 
         # профиль взаимодействия с песочницей
         await sandbox_profiles_functions.add_new_profile(
-            FIRST_BOT_ADMIN_ID,
-            1_000_000,
-            4,
-            1
+            tg_user_id=FIRST_BOT_ADMIN_ID,
+            max_available_checks=1_000_000,
+            check_priority=4,
+            can_get_links=1
         )
     
     # шэдулер на обновление количества попыток
@@ -1458,13 +1461,17 @@ async def main() -> None:
         max_instances=1
     )
     scheduler.start()
-    
+
+    # создаем сессию с серверами ТГ
+    session_with_tg: AiohttpSession = connections.create_session_to_tg()
     # инициализация бота через апи токен бота
     logger.info("Initializing tg bot entity")
     bot = Bot(
-        token=TG_BOT_TOKEN,
-        default=DefaultBotProperties(
-            parse_mode=ParseMode.HTML)
+            token=TG_BOT_TOKEN,
+            default=DefaultBotProperties(
+                parse_mode=ParseMode.HTML
+            ),
+            session=session_with_tg 
         )
 
     # And the run events dispatching
